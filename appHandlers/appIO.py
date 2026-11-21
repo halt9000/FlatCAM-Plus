@@ -2026,6 +2026,75 @@ class appIO(QtCore.QObject):
             if local_use is not None:
                 return gret
 
+    def export_all_dxf(self, obj_names, filename, use_thread=True):
+        """
+        Exports a Geometry Object to an DXF file.
+
+        :param obj_names:    the name list of the FlatCAM object to be saved as DXF
+        :param filename:    Path to the DXF file to save to.
+        :param use_thread:  if to be run in a separate thread
+        :return:
+        """
+        if filename is None:
+            filename = self.app.options["global_last_save_folder"] if \
+                self.app.options["global_last_save_folder"] is not None else self.app.options["global_last_folder"]
+
+        self.log.debug("export_dxf()")
+        self.log.debug(f"obj_names={obj_names}")
+
+        if obj_names is None:
+            objs = [o for o in self.app.collection.get_list() if isinstance(o, GeometryObject)]
+            self.log.debug(f"obj_names is None all objects={objs}")
+        else:
+            objs = []
+            for obj_name in obj_names:
+                self.log.debug(f"obj_name={obj_name}")
+                try:
+                    obj = self.app.collection.get_by_name(str(obj_name))
+                except Exception:
+                    return 'fail'                
+                objs.append(obj)
+        def make_dxf():
+            try:
+                dxf_code = None
+                layerColor = 0
+                for obj in objs:
+                    dxf_code = obj.export_dxf(layerName=obj.obj_options['name'], layerColor=layerColor, dwg=dxf_code)
+                    layerColor += 1
+                try:
+                    dxf_code.saveas(filename)
+                except PermissionError:
+                    self.inform.emit('[WARNING] %s' %
+                                        _("Permission denied, saving not possible.\n"
+                                        "Most likely another app is holding the file open and not accessible."))
+                    return 'fail'
+
+                if self.options["global_open_style"] is False:
+                    self.app.file_opened.emit("DXF", filename)
+                self.app.file_saved.emit("DXF", filename)
+                self.inform.emit('[success] %s: %s' % (_("DXF file exported to"), filename))
+                return dxf_code
+            except Exception as e:
+                self.log.error("App.export_dxf.make_dxf() --> %s" % str(e))
+                return 'fail'
+
+        if use_thread is True:
+
+            with self.app.proc_container.new(_("Exporting ...")):
+
+                def job_thread_exc(app_obj):
+                    ret_dxf_val = make_dxf()
+                    if ret_dxf_val == 'fail':
+                        app_obj.inform.emit('[WARNING_NOTCL] %s' % _('Could not export.'))
+                        return
+
+                self.worker_task.emit({'fcn': job_thread_exc, 'params': [self]})
+        else:
+            ret = make_dxf()
+            if ret == 'fail':
+                self.inform.emit('[WARNING_NOTCL] %s' % _('Could not export.'))
+                return
+
     def export_dxf(self, obj_name, filename, local_use=None, use_thread=True):
         """
         Exports a Geometry Object to an DXF file.

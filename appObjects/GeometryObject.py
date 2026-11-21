@@ -622,35 +622,50 @@ class GeometryObject(FlatCAMObj, Geometry):
             # self.ui.geo_tools_table.item(row, 0).setSelected(True)
             self.ui.geo_tools_table.setCurrentItem(self.ui.geo_tools_table.item(row, 0))
 
-    def export_dxf(self):
-        dwg = None
+    def export_dxf(self, layerName=None, layerColor=7, dwg=None):
+        # dwg = None
         dxf_format = self.app.options['geometry_dxf_format']
 
         try:
-            dwg = ezdxf.new(dxf_format)
-            msp = dwg.modelspace()
+            if dwg is None:
+                dwg = ezdxf.new(dxf_format)
+                # add units
+                dwg.units = ezdxf.InsertUnits(4) if self.app.app_units.lower() == 'mm' else ezdxf.InsertUnits(1)
+                dwg.header['$MEASUREMENT'] = 1 if self.app.app_units.lower() == 'mm' else 0
 
-            # add units
-            dwg.units = ezdxf.InsertUnits(4) if self.app.app_units.lower() == 'mm' else ezdxf.InsertUnits(1)
-            dwg.header['$MEASUREMENT'] = 1 if self.app.app_units.lower() == 'mm' else 0
+            msp = dwg.modelspace()
+            if layerName is not None:
+                dwg.layers.add(name=layerName, color=layerColor, linetype="DASHED")
 
             def g2dxf(dxf_space, geo_obj):
                 if isinstance(geo_obj, MultiPolygon):
                     for poly in geo_obj.geoms:
                         ext_points = list(poly.exterior.coords)
-                        dxf_space.add_lwpolyline(ext_points)
+                        e = dxf_space.add_lwpolyline(ext_points)
+                        if layerName is not None:
+                            e.dxf.layer = layerName
                         for interior in poly.interiors:
-                            dxf_space.add_lwpolyline(list(interior.coords))
+                            e = dxf_space.add_lwpolyline(list(interior.coords))
+                            if layerName is not None:
+                                e.dxf.layer = layerName
                 if isinstance(geo_obj, Polygon):
                     ext_points = list(geo_obj.exterior.coords)
-                    dxf_space.add_lwpolyline(ext_points)
+                    e = dxf_space.add_lwpolyline(ext_points)
+                    if layerName is not None:
+                        e.dxf.layer = layerName
                     for interior in geo_obj.interiors:
-                        dxf_space.add_lwpolyline(list(interior.coords))
+                        e = dxf_space.add_lwpolyline(list(interior.coords))
+                        if layerName is not None:
+                            e.dxf.layer = layerName
                 if isinstance(geo_obj, MultiLineString):
                     for line in geo_obj.geoms:
-                        dxf_space.add_lwpolyline(list(line.coords))
+                        e = dxf_space.add_lwpolyline(list(line.coords))
+                        if layerName is not None:
+                            e.dxf.layer = layerName
                 if isinstance(geo_obj, LineString) or isinstance(geo_obj, LinearRing):
-                    dxf_space.add_lwpolyline(list(geo_obj.coords))
+                    e = dxf_space.add_lwpolyline(list(geo_obj.coords))
+                    if layerName is not None:
+                        e.dxf.layer = layerName
 
             multigeo_solid = []
             if self.multigeo:
